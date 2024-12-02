@@ -23,22 +23,37 @@ var (
 
 // StartServer initializes the chatroom server.
 func StartServer() {
-	ln, err := net.Listen("tcp", ":8080")
+	port := "8080" // Default port
+	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		fmt.Println("Error starting server:", err)
 		return
 	}
-	defer ln.Close()
+	defer listener.Close()
 
-	fmt.Println("Chatroom server started on port 8080")
+	// Get the server's IP address
+	hostName, _ := os.Hostname()
+	addresses, _ := net.LookupHost(hostName)
+	var ipAddress string
+	if len(addresses) > 0 {
+		ipAddress = addresses[0]
+	} else {
+		ipAddress = "127.0.0.1"
+	}
+
+	// Display connection details
+	fmt.Printf("Chatroom server started!\n")
+	fmt.Printf("Clients can connect using the following details:\n")
+	fmt.Printf("IP Address: %s\n", ipAddress)
+	fmt.Printf("Port: %s\n", port)
+	fmt.Printf("Example: %s:%s\n\n", ipAddress, port)
 
 	for {
-		conn, err := ln.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			fmt.Println("Connection error:", err)
 			continue
 		}
-
 		go handleClient(conn)
 	}
 }
