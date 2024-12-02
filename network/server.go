@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 )
@@ -14,7 +13,6 @@ import (
 type Chatroom struct {
 	Name    string
 	Clients map[net.Conn]string
-	History *os.File
 	Mutex   sync.Mutex
 }
 
@@ -23,6 +21,11 @@ var (
 	chatroomsMu sync.Mutex                   // Mutex to protect chatrooms map
 	LogChannel  = make(chan string, 100)     // Exported log channel
 )
+
+// Highlight text for username (using ANSI escape codes for bold text)
+func highlightUsername(username string) string {
+	return fmt.Sprintf("\033[1m%s\033[0m", username)
+}
 
 // StartServer initializes the chatroom server.
 func StartServer() {
@@ -78,9 +81,17 @@ func getPublicIP() string {
 // handleClient manages communication with a single client.
 func handleClient(conn net.Conn) {
 	defer conn.Close()
-
 	reader := bufio.NewReader(conn)
-	conn.Write([]byte("Enter the chatroom name to join or create: "))
+
+	// List available chatrooms
+	chatroomsMu.Lock()
+	conn.Write([]byte("Available chatrooms:\n"))
+	for name := range chatrooms {
+		conn.Write([]byte(fmt.Sprintf("- %s\n", name)))
+	}
+	conn.Write([]byte("Enter a chatroom name to join or create: "))
+	chatroomsMu.Unlock()
+
 	chatroomName, _ := reader.ReadString('\n')
 	chatroomName = strings.TrimSpace(chatroomName)
 
@@ -94,9 +105,10 @@ func handleClient(conn net.Conn) {
 	chatroom.Clients[conn] = username
 	chatroom.Mutex.Unlock()
 
-	LogChannel <- fmt.Sprintf("%s joined chatroom: %s\n", username, chatroomName)
+	LogChannel <- fmt.Sprintf("%s joined chatroom: %s\n", highlightUsername(username), chatroomName)
 	broadcast(chatroom, fmt.Sprintf("%s has joined the chatroom\n", username), conn)
 
+	// Chat loop
 	for {
 		message, err := reader.ReadString('\n')
 		if err != nil {
@@ -104,14 +116,14 @@ func handleClient(conn net.Conn) {
 			delete(chatroom.Clients, conn)
 			chatroom.Mutex.Unlock()
 			broadcast(chatroom, fmt.Sprintf("%s has left the chatroom\n", username), conn)
-			LogChannel <- fmt.Sprintf("%s left chatroom: %s\n", username, chatroomName)
+			LogChannel <- fmt.Sprintf("%s left chatroom: %s\n", highlightUsername(username), chatroomName)
 			return
 		}
 
 		message = strings.TrimSpace(message)
 		fullMessage := fmt.Sprintf("%s: %s\n", username, message)
 		broadcast(chatroom, fullMessage, conn)
-		LogChannel <- fmt.Sprintf("[%s] %s\n", chatroomName, fullMessage)
+		LogChannel <- fmt.Sprintf("[%s] %s\n", chatroomName, highlightUsername(username)+": "+message)
 	}
 }
 
