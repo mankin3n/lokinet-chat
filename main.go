@@ -10,16 +10,15 @@ import (
 	"lokinet-chat/user"
 )
 
-// ANSI Escape Codes for clearing screen
-const clearScreen = "\033[H\033[2J"
-
 func printMenu() {
-	fmt.Print(clearScreen)
+	// Clear the screen and display the main menu
+	fmt.Print("\033[H\033[2J")
 	fmt.Println(`
  _  _ _  _ _    ___  ____ ____    _  _ ____ ____ ____ ____ ____ ____ ____ ____ 
 |__| |  | |    |  \ |___ |__/    |\/| |___ [__  [__  |__| | __ |___ |__/ 
 |  | |__| |___ |__/ |___ |  \    |  | |___ ___] ___] |  | |__] |___ |  \ 
 `)
+
 	fmt.Println("[1] Start Chatroom Server")
 	fmt.Println("[2] Join or Create a Chatroom")
 	fmt.Println("[3] View Profile")
@@ -30,29 +29,36 @@ func printMenu() {
 
 func main() {
 	reader := bufio.NewReader(os.Stdin)
+
 	for {
 		printMenu()
 		fmt.Print("Select an option: ")
+
 		option, _ := reader.ReadString('\n')
 		option = strings.TrimSpace(option)
 
 		switch option {
 		case "1":
 			fmt.Println("Starting the chatroom server...")
-			go network.StartServer()
+			go network.StartServer() // Start the server in a separate goroutine
+
+			// Display real-time logs
+			for log := range network.LogChannel {
+				fmt.Print(log)
+			}
 		case "2":
 			fmt.Print("Enter the server address (e.g., 127.0.0.1:8080): ")
 			address, _ := reader.ReadString('\n')
 			address = strings.TrimSpace(address)
+
 			network.JoinChatroom(address)
 		case "3":
-			// Display Profile Without Clearing Screen
 			fmt.Println("=== View Profile ===")
 			profile, err := user.LoadProfile()
 			if err != nil {
 				fmt.Println("Error: Profile not found! Please create one first.")
 				fmt.Println("Press Enter to return to the menu.")
-				reader.ReadString('\n') // Wait for user input before returning
+				reader.ReadString('\n')
 				continue
 			}
 
@@ -74,7 +80,7 @@ func main() {
 			if err == nil && existingProfile.Username == username {
 				fmt.Printf("Error: A profile with username '%s' already exists.\n", username)
 				fmt.Println("Press Enter to return to the menu.")
-				reader.ReadString('\n') // Wait for user input before returning
+				reader.ReadString('\n')
 				continue
 			}
 
@@ -82,7 +88,7 @@ func main() {
 			if err != nil {
 				fmt.Println("Error creating profile:", err)
 				fmt.Println("Press Enter to return to the menu.")
-				reader.ReadString('\n') // Wait for user input before returning
+				reader.ReadString('\n')
 				continue
 			}
 
@@ -93,7 +99,7 @@ func main() {
 				fmt.Println("Profile created successfully!")
 			}
 			fmt.Println("Press Enter to return to the menu.")
-			reader.ReadString('\n') // Wait for user input before returning
+			reader.ReadString('\n')
 		case "5":
 			fmt.Println("Exiting... Goodbye!")
 			return
