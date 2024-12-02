@@ -8,7 +8,7 @@ import (
 )
 
 // JoinChatroom connects to the specified chatroom on the server.
-func JoinChatroom(address string, chatroomName string) {
+func JoinChatroom(address string) {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		fmt.Println("Connection error:", err)
@@ -16,13 +16,9 @@ func JoinChatroom(address string, chatroomName string) {
 	}
 	defer conn.Close()
 
-	// Send chatroom name
-	fmt.Fprintf(conn, "%s\n", chatroomName)
-
 	go receiveMessages(conn)
 
-	fmt.Println("Connected to chatroom:", chatroomName)
-	fmt.Println("Start typing your messages. Type '/quit' to exit.")
+	fmt.Println("Connected to the server. Follow the instructions to join or create a chatroom.")
 
 	// Read user input and send to the server
 	scanner := bufio.NewScanner(os.Stdin)

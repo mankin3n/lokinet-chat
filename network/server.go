@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 )
@@ -11,6 +12,7 @@ import (
 type Chatroom struct {
 	Name    string
 	Clients map[net.Conn]string
+	History *os.File
 	Mutex   sync.Mutex
 }
 
@@ -47,7 +49,10 @@ func handleClient(conn net.Conn) {
 
 	reader := bufio.NewReader(conn)
 
-	conn.Write([]byte("Enter the chatroom name: "))
+	conn.Write([]byte("Available chatrooms:\n"))
+	listChatrooms(conn)
+
+	conn.Write([]byte("Enter the chatroom name to join or create: "))
 	chatroomName, _ := reader.ReadString('\n')
 	chatroomName = strings.TrimSpace(chatroomName)
 
@@ -63,6 +68,8 @@ func handleClient(conn net.Conn) {
 
 	broadcast(chatroom, fmt.Sprintf("%s has joined the chatroom\n", username), conn)
 
+	conn.Write([]byte("Type your messages. Type '/quit' to leave the chatroom.\n"))
+
 	for {
 		message, err := reader.ReadString('\n')
 		if err != nil {
@@ -73,7 +80,18 @@ func handleClient(conn net.Conn) {
 			return
 		}
 
-		broadcast(chatroom, fmt.Sprintf("%s: %s", username, message), conn)
+		message = strings.TrimSpace(message)
+		if message == "/quit" {
+			chatroom.Mutex.Lock()
+			delete(chatroom.Clients, conn)
+			chatroom.Mutex.Unlock()
+			broadcast(chatroom, fmt.Sprintf("%s has left the chatroom\n", username), conn)
+			return
+		}
+
+		fullMessage := fmt.Sprintf("%s: %s\n", username, message)
+		broadcast(chatroom, fullMessage, conn)
+		saveToHistory(chatroom, fullMessage)
 	}
 }
 
@@ -86,12 +104,29 @@ func getOrCreateChatroom(name string) *Chatroom {
 		return chatroom
 	}
 
+	// Create new chatroom
+	file, err := os.OpenFile(fmt.Sprintf("%s_history.txt", name), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("Error creating history file for chatroom %s: %v\n", name, err)
+	}
+
 	newChatroom := &Chatroom{
 		Name:    name,
 		Clients: make(map[net.Conn]string),
+		History: file,
 	}
 	chatrooms[name] = newChatroom
 	return newChatroom
+}
+
+// listChatrooms sends the list of available chatrooms to a client.
+func listChatrooms(conn net.Conn) {
+	chatroomsMu.Lock()
+	defer chatroomsMu.Unlock()
+
+	for name := range chatrooms {
+		conn.Write([]byte(fmt.Sprintf("- %s\n", name)))
+	}
 }
 
 // broadcast sends a message to all connected clients in the chatroom except the sender.
@@ -99,10 +134,20 @@ func broadcast(chatroom *Chatroom, message string, sender net.Conn) {
 	chatroom.Mutex.Lock()
 	defer chatroom.Mutex.Unlock()
 
-	fmt.Printf("[%s] Broadcasting: %s", chatroom.Name, message)
+	fmt.Printf("[%s] %s", chatroom.Name, message)
 	for client := range chatroom.Clients {
 		if client != sender {
 			client.Write([]byte(message))
+		}
+	}
+}
+
+// saveToHistory writes a message to the chatroom's history file.
+func saveToHistory(chatroom *Chatroom, message string) {
+	if chatroom.History != nil {
+		_, err := chatroom.History.WriteString(message)
+		if err != nil {
+			fmt.Printf("Error writing to history file for chatroom %s: %v\n", chatroom.Name, err)
 		}
 	}
 }

@@ -13,7 +13,7 @@ import (
 func main() {
 	fmt.Println("=== Lokinet Chat CLI ===")
 	fmt.Println("[1] Start Chatroom Server")
-	fmt.Println("[2] Join a Chatroom")
+	fmt.Println("[2] Join or Create a Chatroom")
 	fmt.Println("[3] View Profile")
 	fmt.Println("[4] Create Profile")
 	fmt.Println("[5] Exit")
@@ -33,12 +33,7 @@ func main() {
 			fmt.Print("Enter the server address (e.g., 127.0.0.1:8080): ")
 			address, _ := reader.ReadString('\n')
 			address = strings.TrimSpace(address)
-
-			fmt.Print("Enter the chatroom name: ")
-			chatroomName, _ := reader.ReadString('\n')
-			chatroomName = strings.TrimSpace(chatroomName)
-
-			network.JoinChatroom(address, chatroomName)
+			network.JoinChatroom(address)
 		case "3":
 			fmt.Println("=== View Profile ===")
 			profile, err := user.LoadProfile()
