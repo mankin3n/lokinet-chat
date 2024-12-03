@@ -7,8 +7,7 @@ Lokinet Chat CLI is a secure, multi-chatroom messaging application built with Go
 
 ## Features
 
-1. **Multi-Chatroom Support**
-   - Users can create or join multiple chatrooms hosted on a server.
+G>>>>>>>>>>>   - Users can create or join multiple chatrooms hosted on a server.
 
 2. **Real-Time Messaging**
    - Messages are broadcast to all participants in the chatroom.
