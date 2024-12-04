@@ -3,9 +3,7 @@ package network
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"strings"
 	"sync"
 )
@@ -37,7 +35,7 @@ func StartServer() {
 	}
 	defer listener.Close()
 
-	// Get the public IP address
+	// Get the public IP address using internal tools
 	publicIP := getPublicIP()
 	if publicIP == "" {
 		publicIP = "127.0.0.1" // Fallback to localhost
@@ -60,22 +58,17 @@ func StartServer() {
 	}
 }
 
-// getPublicIP retrieves the public IP address of the server.
+// getPublicIP retrieves the public IP address of the server using socket connection.
 func getPublicIP() string {
-	resp, err := http.Get("https://api.ipify.org")
+	conn, err := net.Dial("udp", "8.8.8.8:80") // Use Google's public DNS server for a connection test
 	if err != nil {
-		LogChannel <- fmt.Sprintf("Error fetching public IP: %v\n", err)
+		LogChannel <- fmt.Sprintf("Error determining public IP: %v\n", err)
 		return ""
 	}
-	defer resp.Body.Close()
+	defer conn.Close()
 
-	ip, err := io.ReadAll(resp.Body)
-	if err != nil {
-		LogChannel <- fmt.Sprintf("Error reading public IP response: %v\n", err)
-		return ""
-	}
-
-	return strings.TrimSpace(string(ip))
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }
 
 // handleClient manages communication with a single client.
@@ -83,47 +76,63 @@ func handleClient(conn net.Conn) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 
-	// List available chatrooms
-	chatroomsMu.Lock()
-	conn.Write([]byte("Available chatrooms:\n"))
-	for name := range chatrooms {
-		conn.Write([]byte(fmt.Sprintf("- %s\n", name)))
-	}
-	conn.Write([]byte("Enter a chatroom name to join or create: "))
-	chatroomsMu.Unlock()
-
-	chatroomName, _ := reader.ReadString('\n')
-	chatroomName = strings.TrimSpace(chatroomName)
-
-	chatroom := getOrCreateChatroom(chatroomName)
-
+	// Enter username
 	conn.Write([]byte("Enter your username: "))
 	username, _ := reader.ReadString('\n')
 	username = strings.TrimSpace(username)
 
-	chatroom.Mutex.Lock()
-	chatroom.Clients[conn] = username
-	chatroom.Mutex.Unlock()
+	LogChannel <- fmt.Sprintf("%s connected.\n", highlightUsername(username))
+	conn.Write([]byte("Welcome to the server, " + username + "!\n"))
 
-	LogChannel <- fmt.Sprintf("%s joined chatroom: %s\n", highlightUsername(username), chatroomName)
-	broadcast(chatroom, fmt.Sprintf("%s has joined the chatroom\n", username), conn)
-
-	// Chat loop
 	for {
-		message, err := reader.ReadString('\n')
-		if err != nil {
-			chatroom.Mutex.Lock()
-			delete(chatroom.Clients, conn)
-			chatroom.Mutex.Unlock()
-			broadcast(chatroom, fmt.Sprintf("%s has left the chatroom\n", username), conn)
-			LogChannel <- fmt.Sprintf("%s left chatroom: %s\n", highlightUsername(username), chatroomName)
-			return
+		// List chatrooms
+		chatroomsMu.Lock()
+		conn.Write([]byte("Available chatrooms:\n"))
+		for name := range chatrooms {
+			conn.Write([]byte(fmt.Sprintf("- %s\n", name)))
 		}
+		conn.Write([]byte("Enter a chatroom name to join or create: "))
+		chatroomsMu.Unlock()
 
-		message = strings.TrimSpace(message)
-		fullMessage := fmt.Sprintf("%s: %s\n", username, message)
-		broadcast(chatroom, fullMessage, conn)
-		LogChannel <- fmt.Sprintf("[%s] %s\n", chatroomName, highlightUsername(username)+": "+message)
+		chatroomName, _ := reader.ReadString('\n')
+		chatroomName = strings.TrimSpace(chatroomName)
+
+		chatroom := getOrCreateChatroom(chatroomName)
+
+		chatroom.Mutex.Lock()
+		chatroom.Clients[conn] = username
+		chatroom.Mutex.Unlock()
+
+		LogChannel <- fmt.Sprintf("%s joined chatroom: %s\n", highlightUsername(username), chatroomName)
+		broadcast(chatroom, fmt.Sprintf("%s has joined the chatroom\n", username), conn)
+
+		// Chat loop
+		for {
+			message, err := reader.ReadString('\n')
+			if err != nil {
+				chatroom.Mutex.Lock()
+				delete(chatroom.Clients, conn)
+				chatroom.Mutex.Unlock()
+				broadcast(chatroom, fmt.Sprintf("%s has left the chatroom\n", username), conn)
+				LogChannel <- fmt.Sprintf("%s left chatroom: %s\n", highlightUsername(username), chatroomName)
+				break
+			}
+
+			message = strings.TrimSpace(message)
+			if strings.ToLower(message) == "/exit" {
+				conn.Write([]byte("Exiting chatroom...\n"))
+				chatroom.Mutex.Lock()
+				delete(chatroom.Clients, conn)
+				chatroom.Mutex.Unlock()
+				broadcast(chatroom, fmt.Sprintf("%s has left the chatroom\n", username), conn)
+				LogChannel <- fmt.Sprintf("%s exited chatroom: %s\n", highlightUsername(username), chatroomName)
+				break
+			}
+
+			fullMessage := fmt.Sprintf("%s: %s\n", username, message)
+			broadcast(chatroom, fullMessage, conn)
+			LogChannel <- fmt.Sprintf("[%s] %s\n", chatroomName, highlightUsername(username)+": "+message)
+		}
 	}
 }
 
